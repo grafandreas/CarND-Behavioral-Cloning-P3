@@ -1,6 +1,10 @@
 from keras.models import Sequential
 from keras.layers import Flatten, Dense, Dropout
 from keras.layers.convolutional import Convolution2D
+
+# Simple implementation of the NVIDIA network shown in the class, augmented
+# with a few dropouts.
+#
 def NvidiaNet(model) :
     model.add(Convolution2D(24,5,5,subsample=(2,2),activation="relu"))
     model.add(Convolution2D(36,5,5,subsample=(2,2),activation="relu"))

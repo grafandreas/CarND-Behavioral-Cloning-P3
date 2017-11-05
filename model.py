@@ -3,29 +3,48 @@ import cv2
 import numpy as np
 import sklearn
 
+# A simple switch to toggle between Udacity provided data
+# and own recordings. Code has been implemented so that
+# data can be recorded into more than one directory for
+# ease of use and comparability
+#
 if (False) :
     RECORD_DIRS=["record","record_bridge","record_large","record_recover","record_track_2"]#,"record_off_track"]#]
 else :
     RECORD_DIRS=["data"]
 
+# Some variables for the code that reads data from
+# several directories.
 CSVPATH="/driving_log.csv"
 IMAGEDIR="/IMG/"
-
 FILEDELIM ="\\"
-USENVIDIA = True
-USE_FLIP = True
-USE_SIDE_CAMS = True
 
+# Flag to choose Nvidia NN or simple 1-layer
+USENVIDIA = True
+
+# Flag to toggle data augmentation of flipping image and
+# angle
+USE_FLIP = True
+
+# Flag to toggle use of sidecams
+USE_SIDE_CAMS = True
+CORRECTION = 0.2
+
+# Configuration of cropping dimensions
 CROP_TOP = 60
 CROP_BOTTOM = 25
 
-CORRECTION = 0.2
-
+# NN configuration
 EPOCHS=5
 BATCH_SIZE=32
 
 
-
+# This reads an image based on a line in the csv. Idx
+# gives column in csv to consider.
+# Throws an assertion in case image reading failes.
+# IMPORTANT: cv2 read BGR data, but drive.py works on
+# RGB -> need to convert for training
+#
 def getImage(dirp, line, idx) :
     source_path = line[idx]
     #filename = source_path.split(FILEDELIM)[-1]
@@ -36,6 +55,9 @@ def getImage(dirp, line, idx) :
     assert image is not None, "Image <%s> returned None" % source_path
     return image
 
+# Add training data to the set of data. Uses the
+# USE_FLIP toggle to add a flipped image/angle if True
+#
 def addTrain(images,measurements,image,measurement) :
     images.append(image)
     measurements.append(measurement)
@@ -43,6 +65,9 @@ def addTrain(images,measurements,image,measurement) :
         images.append(cv2.flip(image,1))
         measurements.append(-measurement)    
 
+# Read the lines from all the CSVs in all the directories
+# that are configures as input
+#
 csv_lines = []
 for mdir in RECORD_DIRS:
     MYCSV = mdir + CSVPATH
@@ -60,6 +85,10 @@ print("Size of lines "+str(len(csv_lines)))
 print("Train samples "+str(len(train_samples)))
 print("Val samples "+str(len(validation_samples)))
 
+# Using a Python generator to provide data, since
+# otherwise we get an OOM exception.
+# Honors the flag of possible adding side came images
+#
 def generator(samples, batch_size = BATCH_SIZE)  :
     num_samples = len(samples)
     while(True):
@@ -96,11 +125,18 @@ from mynvidianet import NvidiaNet
 from keras.layers import Cropping2D
 from keras.layers import Lambda
 
+# Initial model, including image pre-processing. Note that the
+# lambda is _after_ the cropping to reduce working on unnecessary data.
+#
 model = Sequential()
 #model.add(Lambda(lambda x: x/255.0-0.5),input_shape=(160,320,3))) # Move this after crop
 model.add(Cropping2D(cropping=((CROP_TOP,CROP_BOTTOM), (0,0)), input_shape=(160,320,3)))
 model.add(Lambda(lambda x: (x / 255.0) - 0.5, input_shape=(160,320,3)))
 
+# The actual NN implementation is in mynvidianet.py, this is done to
+# keep this code clean, and because I want to easily use a simpler NN for
+# infrastructure tests
+#
 if(USENVIDIA) :
     NvidiaNet(model)
 else :
@@ -113,6 +149,10 @@ validation_generator = generator(validation_samples, batch_size=BATCH_SIZE)
 model.compile(loss='mse', optimizer='adam')
 #model.fit(X_train, y_train, validation_split=0.2, shuffle=True,nb_epoch=EPOCHS)
 
+# For using the generator, we need to pre-calculate the number of images that
+# we actually use. This is influenced by the data augmentation strategies being
+# used, to the factor is calculated based on these.
+#
 sample_factor = 1
 if(USE_FLIP) :
     sample_factor = 2
